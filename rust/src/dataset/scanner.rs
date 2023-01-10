@@ -51,6 +51,10 @@ pub struct Scanner<'a> {
     limit: Option<i64>,
     offset: Option<i64>,
 
+    // If set true, returns the row ID from the dataset alongside with the
+    // actual data.
+    with_row_id: bool,
+
     fragments: Vec<Fragment>,
 
     /// Scan the dataset with a meta column: "_rowid"
@@ -64,6 +68,7 @@ impl<'a> Scanner<'a> {
             projections: dataset.schema().clone(),
             limit: None,
             offset: None,
+            with_row_id: false,
             fragments: dataset.fragments().to_vec(),
             with_row_id: false,
         }

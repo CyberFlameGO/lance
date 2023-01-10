@@ -15,19 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Lance Columnar Data Format
+//! Approximated Nearest Neighbor index
 //!
-//! Lance columnar data format is an alternative to Parquet. It provides 100x faster for random access,
-//! automatic versioning, optimized for computer vision, bioinformatics, spatial and ML data.
-//! [Apache Arrow](https://arrow.apache.org/) and DuckDB compatible.
 
-pub mod arrow;
-pub mod dataset;
-pub mod datatypes;
-pub mod encodings;
-pub mod error;
-pub mod format;
-pub mod index;
-pub mod io;
+mod flat;
+mod distance;
 
-pub use error::{Error, Result};
+use arrow_array::ArrayRef;
+pub use flat::FlatIndex;
+
+/// Search parameters for the ANN indices
+pub struct SearchParams {
+    /// The vector to be searched.
+    pub key: ArrayRef,
+    /// Top k results to return.
+    pub k: usize,
+    /// number of probs to load and search
+    pub nprob: usize,
+}
