@@ -18,8 +18,8 @@
 //! Approximated Nearest Neighbor index
 //!
 
-mod flat;
 mod distance;
+mod flat;
 
 use arrow_array::ArrayRef;
 pub use flat::FlatIndex;

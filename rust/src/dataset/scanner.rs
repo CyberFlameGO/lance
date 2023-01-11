@@ -17,14 +17,14 @@
 
 use std::sync::Arc;
 
-use arrow_array::RecordBatch;
-use arrow_schema::{Schema as ArrowSchema, SchemaRef};
+use arrow_array::{RecordBatch, UInt64Array};
+use arrow_schema::{DataType, Field as ArrowField, Schema as ArrowSchema, SchemaRef};
 use futures::stream::Stream;
 use object_store::path::Path;
 use tokio::sync::mpsc::{self, Receiver};
 
 use super::Dataset;
-use crate::datatypes::Schema;
+use crate::datatypes::{Field, Schema};
 use crate::format::{Fragment, Manifest};
 use crate::io::{FileReader, ObjectStore};
 use crate::{Error, Result};
@@ -56,9 +56,6 @@ pub struct Scanner<'a> {
     with_row_id: bool,
 
     fragments: Vec<Fragment>,
-
-    /// Scan the dataset with a meta column: "_rowid"
-    with_row_id: bool,
 }
 
 impl<'a> Scanner<'a> {
@@ -104,7 +101,7 @@ impl<'a> Scanner<'a> {
     ///
     /// TODO: implement as IntoStream/IntoIterator.
     pub fn into_stream(&self) -> ScannerStream {
-        const PREFECTH_SIZE: usize = 8;
+        const PREFECTH_SIZE: usize = 32;
         let object_store = self.dataset.object_store.clone();
 
         let data_dir = self.dataset.data_dir().clone();
@@ -140,8 +137,15 @@ impl ScannerStream {
         let (tx, rx) = mpsc::channel(prefetch_size);
 
         let schema = schema.clone();
+        let mut return_schema = schema.clone();
+        if with_row_id {
+            return_schema.fields.push(
+                Field::try_from(&ArrowField::new("_rowid", DataType::UInt64, false)).unwrap(),
+            );
+        }
         tokio::spawn(async move {
             for frag in &fragments {
+                let mut row_count = 0;
                 let data_file = &frag.files[0];
                 let path = data_dir.child(data_file.path.clone());
                 let reader = match FileReader::try_new_with_fragment(
@@ -170,9 +174,28 @@ impl ScannerStream {
                     }
                 };
                 for batch_id in 0..reader.num_batches() {
-                    tx.send(reader.read_batch(batch_id as i32).await)
-                        .await
-                        .unwrap();
+                    println!("Read batch: {} channel cap={}", batch_id, tx.capacity());
+                    let batch = reader.read_batch(batch_id as i32).await.map(|b| {
+                        if with_row_id {
+                            // Add a meta column;
+                            let mut columns = b.columns().to_vec();
+                            columns.push(Arc::new(UInt64Array::from(
+                                (row_count..row_count + b.num_rows() as u64).collect::<Vec<u64>>(),
+                            )));
+                            RecordBatch::try_new(
+                                Arc::new(ArrowSchema::try_from(&return_schema).unwrap()),
+                                columns.to_vec(),
+                            )
+                            .unwrap()
+                        } else {
+                            b
+                        }
+                    });
+                    batch.as_ref().and_then(|b| {
+                        row_count += b.num_rows() as u64;
+                        Ok(b)
+                    });
+                    tx.send(batch).await.unwrap();
                 }
             }
             drop(tx)
