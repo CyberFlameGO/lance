@@ -32,7 +32,7 @@ use super::distance::euclidean_distance;
 use super::SearchParams;
 use crate::arrow::RecordBatchExt;
 use crate::dataset::Dataset;
-use crate::{Error, Result};
+use crate::Result;
 
 /// Flat Vector Index.
 ///
@@ -93,13 +93,11 @@ impl<'a> FlatIndex<'a> {
                     })
                     .await
                     .unwrap();
-                    RecordBatch::try_new(
+                    Ok(RecordBatch::try_new(
                         schema.clone(),
                         vec![batch.column_with_name("_rowid").unwrap().clone(), scores],
-                    )
-                    .map_err(|e| Error::from(e))
+                    )?)
                 } else {
-                    println!("B is: {:?}\n", b);
                     b
                 }
             })

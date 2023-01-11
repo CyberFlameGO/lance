@@ -3,7 +3,7 @@ use std::iter::repeat_with;
 use std::sync::Arc;
 
 use arrow_array::Float32Array;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use lance::dataset::Dataset;
 use lance::index::ann::{FlatIndex, SearchParams};
 use rand::Rng;
