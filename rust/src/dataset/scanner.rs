@@ -29,6 +29,8 @@ use crate::format::{Fragment, Manifest};
 use crate::io::{FileReader, ObjectStore};
 use crate::{Error, Result};
 
+const DEFAULT_PREFETCH_SIZE: usize = 8;
+
 /// Dataset Scanner
 ///
 /// ```rust,ignore
@@ -55,6 +57,9 @@ pub struct Scanner<'a> {
     // actual data.
     with_row_id: bool,
 
+    /// How many batches to read ahead.
+    prefetch_size: usize,
+
     fragments: Vec<Fragment>,
 }
 
@@ -66,6 +71,7 @@ impl<'a> Scanner<'a> {
             limit: None,
             offset: None,
             with_row_id: false,
+            prefetch_size: DEFAULT_PREFETCH_SIZE,
             fragments: dataset.fragments().to_vec(),
             with_row_id: false,
         }
@@ -86,6 +92,12 @@ impl<'a> Scanner<'a> {
         self
     }
 
+    /// How many batches to read ahead (prefetch).
+    pub fn prefetch_size(&mut self, n: usize) -> &mut Self {
+        self.prefetch_size = n;
+        self
+    }
+
     /// Instruct the scanner to return the `_rowid` meta column from the dataset.
     pub fn with_row_id(&mut self) -> &mut Self {
         self.with_row_id = true;
@@ -101,7 +113,6 @@ impl<'a> Scanner<'a> {
     ///
     /// TODO: implement as IntoStream/IntoIterator.
     pub fn into_stream(&self) -> ScannerStream {
-        const PREFECTH_SIZE: usize = 32;
         let object_store = self.dataset.object_store.clone();
 
         let data_dir = self.dataset.data_dir().clone();
@@ -113,7 +124,7 @@ impl<'a> Scanner<'a> {
             data_dir,
             fragments,
             manifest,
-            PREFECTH_SIZE,
+            self.prefetch_size,
             &self.projections,
             self.with_row_id,
         )
@@ -176,23 +187,20 @@ impl ScannerStream {
                 for batch_id in 0..reader.num_batches() {
                     let batch = reader.read_batch(batch_id as i32).await.map(|b| {
                         if with_row_id {
-                            // Add a meta column;
+                            // Add the meta "_rowid" column
                             let mut columns = b.columns().to_vec();
                             columns.push(Arc::new(UInt64Array::from(
                                 (row_count..row_count + b.num_rows() as u64).collect::<Vec<u64>>(),
                             )));
+                            row_count += b.num_rows() as u64;
                             RecordBatch::try_new(
                                 Arc::new(ArrowSchema::try_from(&return_schema).unwrap()),
                                 columns.to_vec(),
-                            )
-                            .unwrap()
+                            ).unwrap()
                         } else {
+                            row_count += b.num_rows() as u64;
                             b
                         }
-                    });
-                    batch.as_ref().and_then(|b| {
-                        row_count += b.num_rows() as u64;
-                        Ok(b)
                     });
                     tx.send(batch).await.unwrap();
                 }
@@ -213,3 +221,4 @@ impl Stream for ScannerStream {
         std::pin::Pin::into_inner(self).rx.poll_recv(cx)
     }
 }
+
