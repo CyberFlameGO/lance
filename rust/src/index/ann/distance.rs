@@ -25,6 +25,7 @@ use std::sync::Arc;
 use arrow_arith::aggregate::sum;
 use arrow_arith::arithmetic::{multiply, subtract};
 use arrow_array::{Array, FixedSizeListArray, Float32Array};
+use arrow_schema::DataType;
 
 use crate::Result;
 
@@ -34,6 +35,7 @@ pub fn euclidean_distance(
     to: &FixedSizeListArray,
 ) -> Result<Arc<Float32Array>> {
     assert_eq!(from.len(), to.value_length() as usize);
+    assert_eq!(to.value_type(), DataType::Float32);
 
     // Naive implementation.
     // TODO: benchmark and use SIMD or BLAS

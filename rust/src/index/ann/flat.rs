@@ -68,7 +68,7 @@ impl<'a> FlatIndex<'a> {
     /// ```
     ///
     /// WARNINGS:
-    ///  - Only supports f32 now. add f64 later.
+    ///  - Only supports f32 now. we add f64 later.
     pub async fn search(&self, params: &SearchParams) -> Result<RecordBatch> {
         let stream = self
             .dataset
