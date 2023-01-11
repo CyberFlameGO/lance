@@ -1,13 +1,12 @@
-use arrow_array::Float32Array;
-use criterion::Criterion;
-use criterion::{criterion_group, criterion_main};
-use lance::dataset::Dataset;
-use lance::index::ann::{FlatIndex, SearchParams};
-use rand;
-use rand::Rng;
+use std::env::current_dir;
 use std::iter::repeat_with;
 use std::sync::Arc;
-// use criterion::async_executor::tokio::runtime::Runtime;
+
+use arrow_array::Float32Array;
+use criterion::{Criterion, criterion_group, criterion_main};
+use lance::dataset::Dataset;
+use lance::index::ann::{FlatIndex, SearchParams};
+use rand::Rng;
 
 pub fn generate_random_array(n: usize) -> Arc<Float32Array> {
     let mut rng = rand::thread_rng();
@@ -19,13 +18,19 @@ pub fn generate_random_array(n: usize) -> Arc<Float32Array> {
 }
 
 fn bench_search(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(8).build().unwrap();
-    c.bench_function("iter", move |b| {
+    const NUM_THREADS: usize = 8;
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(NUM_THREADS)
+        .build()
+        .unwrap();
+
+    c.bench_function("vec-flat-index(1024 / 1M)", move |b| {
         b.to_async(&runtime).iter(|| async {
-            let dataset = Dataset::open("/home/lei/work/lance/rust/vec_data")
+            let dataset_uri = current_dir().unwrap().join("vec_data");
+            let dataset = Dataset::open(dataset_uri.as_path().to_str().unwrap())
                 .await
                 .unwrap();
-            println!("Dataset schema: {:?}", dataset.schema());
 
             let index = FlatIndex::new(&dataset, "vec".to_string());
             let params = SearchParams {
@@ -33,8 +38,7 @@ fn bench_search(c: &mut Criterion) {
                 k: 10,
                 nprob: 0,
             };
-            let scores = index.search(&params).await.unwrap();
-            println!("scores: {:?}\n", scores);
+            index.search(&params).await.unwrap();
         })
     });
 }

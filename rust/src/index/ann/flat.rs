@@ -119,43 +119,6 @@ impl<'a> FlatIndex<'a> {
 
         let struct_arr = StructArray::from(scores);
         let taken_scores = take(&struct_arr, &indices, None)?;
-        // Ok(scores)
         Ok(as_struct_array(&taken_scores).into())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dataset::Dataset;
-    use std::iter::repeat_with;
-
-    use arrow_array::Float32Array;
-    use rand::Rng;
-
-    pub fn generate_random_array(n: usize) -> Arc<Float32Array> {
-        let mut rng = rand::thread_rng();
-        Arc::new(Float32Array::from(
-            repeat_with(|| rng.gen::<f32>())
-                .take(n)
-                .collect::<Vec<f32>>(),
-        ))
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-    async fn test_flat_index() {
-        let dataset = Dataset::open("/home/lei/work/lance/rust/vec_data")
-            .await
-            .unwrap();
-        println!("Dataset schema: {:?}", dataset.schema());
-
-        let index = FlatIndex::new(&dataset, "vec".to_string());
-        let params = SearchParams {
-            key: generate_random_array(1024),
-            k: 10,
-            nprob: 0,
-        };
-        let scores = index.search(&params).await.unwrap();
-        println!("scores: {:?}\n", scores);
     }
 }
