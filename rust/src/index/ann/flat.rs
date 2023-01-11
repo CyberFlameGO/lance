@@ -77,18 +77,20 @@ impl<'a> FlatIndex<'a> {
             .with_row_id()
             .into_stream();
 
-        let key_arr: &Float32Array = as_primitive_array(&params.key);
         let schema = Arc::new(ArrowSchema::new(vec![
             ArrowField::new("_rowid", DataType::UInt64, false),
             ArrowField::new("score", DataType::Float32, false),
         ]));
+        let key_arr: &Float32Array = as_primitive_array(&params.key);
         let all_scores = stream
-            .then(|b| async {
+            .map(|b| async {
                 if let Ok(batch) = b {
-                    let value_arr = batch.column_with_name(&self.column).unwrap();
-                    let targets = downcast_array::<FixedSizeListArray>(&value_arr);
-                    let scores = euclidean_distance(key_arr, &targets)?;
-                    // println!("Scores: {:?}", scores);
+                    let key_arr = key_arr.clone();
+                    let value_arr = batch.column_with_name(&self.column).unwrap().clone();
+                    let scores = tokio::task::spawn_blocking(move || {
+                        let targets = downcast_array::<FixedSizeListArray>(&value_arr);
+                        euclidean_distance(&key_arr, &targets).unwrap()
+                    }).await.unwrap();
                     RecordBatch::try_new(
                         schema.clone(),
                         vec![batch.column_with_name("_rowid").unwrap().clone(), scores],
@@ -98,6 +100,7 @@ impl<'a> FlatIndex<'a> {
                     b
                 }
             })
+            .buffered(10)
             .collect::<Vec<_>>()
             .await;
         let scores = concat_batches(
@@ -136,7 +139,7 @@ mod tests {
         ))
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor="multi_thread", worker_threads=8)]
     async fn test_flat_index() {
         let dataset = Dataset::open("/Users/lei/work/lance/rust/vec_data")
             .await

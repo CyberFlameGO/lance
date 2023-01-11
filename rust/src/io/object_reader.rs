@@ -118,7 +118,11 @@ impl<'a> ObjectReader<'a> {
     }
 
     pub async fn get_ranges(&self, ranges: &[Range<usize>]) -> Result<Vec<Bytes>> {
-        Ok(self.object_store.inner.get_ranges(&self.path, ranges).await?)
+        Ok(self
+            .object_store
+            .inner
+            .get_ranges(&self.path, ranges)
+            .await?)
     }
 
     /// Read a fixed stride array from disk.
