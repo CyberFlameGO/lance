@@ -190,13 +190,15 @@ impl ScannerStream {
                             // Add the meta "_rowid" column
                             let mut columns = b.columns().to_vec();
                             columns.push(Arc::new(UInt64Array::from(
-                                (row_count..row_count + b.num_rows() as u64 + fragment_id << 32).collect::<Vec<u64>>(),
+                                (row_count..row_count + b.num_rows() as u64 + fragment_id << 32)
+                                    .collect::<Vec<u64>>(),
                             )));
                             row_count += b.num_rows() as u64;
                             RecordBatch::try_new(
                                 Arc::new(ArrowSchema::try_from(&return_schema).unwrap()),
                                 columns.to_vec(),
-                            ).unwrap()
+                            )
+                            .unwrap()
                         } else {
                             row_count += b.num_rows() as u64;
                             b
@@ -221,4 +223,3 @@ impl Stream for ScannerStream {
         std::pin::Pin::into_inner(self).rx.poll_recv(cx)
     }
 }
-
