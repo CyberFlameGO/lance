@@ -18,11 +18,15 @@
 use std::sync::Arc;
 
 use arrow_array::cast::downcast_array;
-use arrow_array::{cast::as_primitive_array, RecordBatch};
-use arrow_array::{FixedSizeListArray, Float32Array};
+use arrow_array::{
+    cast::{as_primitive_array, as_struct_array},
+    RecordBatch,
+};
+use arrow_array::{FixedSizeListArray, Float32Array, StructArray};
+use arrow_ord::sort::sort_to_indices;
 use arrow_schema::{DataType, Field as ArrowField, Schema as ArrowSchema};
-use arrow_select::concat::concat_batches;
-use futures::stream::{self, StreamExt, TryStream};
+use arrow_select::{concat::concat_batches, take::take};
+use futures::stream::StreamExt;
 
 use super::distance::euclidean_distance;
 use super::SearchParams;
@@ -105,7 +109,13 @@ impl<'a> FlatIndex<'a> {
                 .collect::<Vec<_>>()
                 .as_slice(),
         )?;
-        Ok(scores)
+        let scores_arr = scores.column_with_name("score").unwrap();
+        let indices = sort_to_indices(scores_arr, None, Some(params.k))?;
+
+        let struct_arr = StructArray::from(scores);
+        let taken_scores = take(&struct_arr, &indices, None)?;
+        // Ok(scores)
+        Ok(as_struct_array(&taken_scores).into())
     }
 }
 
