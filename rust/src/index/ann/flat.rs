@@ -90,13 +90,16 @@ impl<'a> FlatIndex<'a> {
                     let scores = tokio::task::spawn_blocking(move || {
                         let targets = downcast_array::<FixedSizeListArray>(&value_arr);
                         euclidean_distance(&key_arr, &targets).unwrap()
-                    }).await.unwrap();
+                    })
+                    .await
+                    .unwrap();
                     RecordBatch::try_new(
                         schema.clone(),
                         vec![batch.column_with_name("_rowid").unwrap().clone(), scores],
                     )
                     .map_err(|e| Error::from(e))
                 } else {
+                    println!("B is: {:?}\n", b);
                     b
                 }
             })
@@ -139,9 +142,9 @@ mod tests {
         ))
     }
 
-    #[tokio::test(flavor="multi_thread", worker_threads=8)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn test_flat_index() {
-        let dataset = Dataset::open("/Users/lei/work/lance/rust/vec_data")
+        let dataset = Dataset::open("/home/lei/work/lance/rust/vec_data")
             .await
             .unwrap();
         println!("Dataset schema: {:?}", dataset.schema());

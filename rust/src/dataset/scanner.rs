@@ -174,7 +174,6 @@ impl ScannerStream {
                     }
                 };
                 for batch_id in 0..reader.num_batches() {
-                    println!("Read batch: {} channel cap={}", batch_id, tx.capacity());
                     let batch = reader.read_batch(batch_id as i32).await.map(|b| {
                         if with_row_id {
                             // Add a meta column;

@@ -130,10 +130,6 @@ impl<'a> PlainDecoder<'a> {
             DataType::Boolean => bit_util::ceil(self.length, 8),
             _ => get_primitive_byte_width(self.data_type)? * self.length,
         };
-        let range = Range {
-            start: self.position,
-            end: self.position + array_bytes,
-        };
         let mut start = self.position;
         let end = self.position + array_bytes;
         let mut ranges: Vec<Range<usize>> = vec![];
@@ -141,7 +137,6 @@ impl<'a> PlainDecoder<'a> {
             ranges.push(start..min(start + 1 * 1024 * 1024, end));
             start += 1 * 1024 * 1024;
         }
-        println!("Size of ranges: {}", ranges.len());
 
         let data = self.reader.get_ranges(&ranges).await?;
         let buf: Buffer = data.concat().into();
