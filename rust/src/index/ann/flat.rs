@@ -39,7 +39,6 @@ use crate::{Error, Result};
 /// Flat index is a meta index, that does not build extra index structure,
 /// and uses the full scan.
 ///
-///
 /// Reference:
 ///   - <https://github.com/facebookresearch/faiss/wiki/Faiss-indexes>
 pub struct FlatIndex<'a> {
@@ -143,8 +142,6 @@ mod tests {
             .await
             .unwrap();
         println!("Dataset schema: {:?}", dataset.schema());
-
-        let mut rng = rand::thread_rng();
 
         let index = FlatIndex::new(&dataset, "vec".to_string());
         let params = SearchParams {
