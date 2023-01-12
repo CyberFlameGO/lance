@@ -21,9 +21,11 @@
 mod distance;
 mod flat;
 mod ivf_pq;
+mod sort;
 
 use arrow_array::ArrayRef;
 pub use flat::FlatIndex;
+pub use sort::find_min_k;
 
 /// Search parameters for the ANN indices
 pub struct SearchParams {

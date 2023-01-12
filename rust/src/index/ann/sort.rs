@@ -1,13 +1,10 @@
-use std::cmp::{max, Ordering};
-use std::fmt::{Debug, Display};
-
+use std::cmp::max;
 use arrow_schema::ArrowError;
 use rand::{Rng, SeedableRng};
 
 /// Partition the `arr` for the first `topk` elements are the smallest
-pub fn find_topk<T: Send + Display, F>(values: &mut [T], indices: &mut [u64], topk: usize, compare: &F) -> Result<(), ArrowError>
-    where F: Fn(&T, &T) -> Ordering + Sync {
-    let mut rng = rand::rngs::SmallRng::from_entropy();
+pub fn find_min_k(values: &mut [f32], indices: &mut [u64], topk: usize) -> Result<(), ArrowError> {
+    let mut rng = rand::rngs::StdRng::from_entropy();
     assert!(topk > 0);
     if values.len() <= topk {
         return Ok(());
@@ -18,7 +15,7 @@ pub fn find_topk<T: Send + Display, F>(values: &mut [T], indices: &mut [u64], to
     let mut limit = max(10, values.len());
     loop {
         let pivot: usize = rng.gen_range(low..high);  // choose random pivot
-        let left = partition(values, indices, low, high, pivot, compare)?;
+        let left = partition(values, indices, low, high, pivot)?;
         if left == topk {
             return Ok(());
         } else if left > topk {
@@ -32,9 +29,7 @@ pub fn find_topk<T: Send + Display, F>(values: &mut [T], indices: &mut [u64], to
 }
 
 /// Returns the number of elements that are smaller or equal to the pivot value
-pub(crate) fn partition<T: Send + Display, F>(arr: &mut [T], indices: &mut [u64], low: usize, high: usize, pivot: usize, compare: &F) -> Result<usize, ArrowError>
-    where F: Fn(&T, &T) -> Ordering, {
-    let is_less = |l: &T, r: &T| compare(l, r) == Ordering::Less;
+pub(crate) fn partition(arr: &mut [f32], indices: &mut [u64], low: usize, high: usize, pivot: usize) -> Result<usize, ArrowError> {
     if !(low <= pivot && pivot < high) {
         return Err(ArrowError::ComputeError("Pivot must be between low and high".to_string()));
     }
@@ -51,12 +46,12 @@ pub(crate) fn partition<T: Send + Display, F>(arr: &mut [T], indices: &mut [u64]
 
     loop {
         // sweep from the left
-        while left_cursor < pivot && !is_less(&arr[pivot], &arr[left_cursor]) {
+        while left_cursor < pivot && &arr[left_cursor] < &arr[pivot] {
             left_cursor += 1;
         }
 
         // sweep from the right
-        while right_cursor > left_cursor && is_less(&arr[pivot], &arr[right_cursor]) {
+        while right_cursor > left_cursor && &arr[pivot] <= &arr[right_cursor] {
             right_cursor -= 1;
         }
 
@@ -79,57 +74,62 @@ pub(crate) fn partition<T: Send + Display, F>(arr: &mut [T], indices: &mut [u64]
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-    use arrow_array::ArrowNativeTypeOp;
-    use rand::{Rng, SeedableRng};
-    use rayon::prelude::*;
-    use crate::index::ann::sort::{find_topk, partition};
-    use crate::tests::generate_random_array;
+    use std::iter::repeat_with;
+    use rand::{Rng, rngs, SeedableRng};
+    use crate::index::ann::sort::{find_min_k, partition};
+
+    pub fn generate_random_vec(n: usize) -> Vec<f32> {
+        let mut rng = rand::thread_rng();
+        repeat_with(|| rng.gen::<f32>())
+            .take(n)
+            .collect::<Vec<f32>>()
+    }
 
     #[test]
     fn test_partition() {
-        let compare = |a: &i32, b: &i32| a.compare(*b);
-        let mut arr = vec![4,9,2,5,3,9,7,1];
+        let mut arr = generate_random_vec(100);
         let mut indices: Vec<u64>= (0..arr.len() as u64).collect();
         let pivot = 3;
         let pivot_val = arr[pivot];
         let len = arr.len();
-        let left = partition(&mut arr, &mut indices, 0, len, pivot, &compare).unwrap();
-        assert_eq!(4, left);
+        let left = partition(&mut arr, &mut indices, 0, len, pivot).unwrap();
         for v in arr[0..left].iter() {
-            assert!(*v < pivot_val)
+            assert!(*v < pivot_val);
+        }
+        assert_eq!(pivot_val, arr[left]);
+        for v in arr[left + 1..].iter() {
+            assert!(*v >= pivot_val);
         }
         let mut indices: Vec<u64> = (0..arr.len() as u64).collect();
 
-        arr = vec![1];
-        assert_eq!(0, partition(&mut arr, &mut indices, 0, 1, 0, &compare).unwrap());
+        arr = vec![1.0];
+        assert_eq!(0, partition(&mut arr, &mut indices, 0, 1, 0).unwrap());
 
-        arr = vec![1, 1, 1, 1, 1, 1, 1];
+        arr = vec![1.0].repeat(10);
         let len = arr.len();
-        assert_eq!(3, partition(&mut arr, &mut indices, 0, len, 4, &compare).unwrap());
+        assert_eq!(0, partition(&mut arr, &mut indices, 0, len, 4).unwrap());
 
-        arr = vec![1, 2, 3, 4, 5, 6, 7];
+        arr = (1..8).map(|int: i16| f32::from(int)).collect();
         let len = arr.len();
-        assert_eq!(4, partition(&mut arr, &mut indices, 0, len, 4, &compare).unwrap());
+        assert_eq!(4, partition(&mut arr, &mut indices, 0, len, 4).unwrap());
 
-        arr = vec![7, 6, 5, 4, 3, 2, 1];
+        arr = (1..8).rev().map(|int: i16| f32::from(int)).collect();
         let len = arr.len();
-        assert_eq!(2, partition(&mut arr, &mut indices, 0, len, 4, &compare).unwrap());
+        assert_eq!(2, partition(&mut arr, &mut indices, 0, len, 4).unwrap());
     }
 
     #[test]
-    fn test_find_topk() {
-        let compare = |a: &f32, b: &f32| a.total_cmp(b);
+    fn test_find_min_k() {
         let mut rows: Vec<u64> = (0..100).collect();
-        let mut rng = rand::rngs::SmallRng::from_entropy();
+        let mut rng = rngs::StdRng::from_entropy();
         let mut scores:[f32; 100] = [0.0; 100];
         rng.fill(&mut scores[..]);
 
         let mut sorted = scores.clone();
-        sorted.par_sort_unstable_by(|a, b| a.total_cmp(b));
+        sorted.sort_unstable_by(|a, b| a.total_cmp(b));
 
         let topk = 10;
-        find_topk(&mut scores, &mut rows, topk, &compare).unwrap();
+        find_min_k(&mut scores, &mut rows, topk).unwrap();
 
         for i in 0..topk {
             assert!(scores[i] <= sorted[topk])
