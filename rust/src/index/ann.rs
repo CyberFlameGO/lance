@@ -20,6 +20,7 @@
 
 mod distance;
 mod flat;
+mod ivf_pq;
 
 use arrow_array::ArrayRef;
 pub use flat::FlatIndex;

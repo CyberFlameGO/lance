@@ -18,11 +18,26 @@
 //! Secondary Index
 //!
 
+use async_trait::async_trait;
+
 pub mod ann;
+use crate::Result;
+
+pub enum IndexType {
+    // Preserve 0-100 for simple indices.
+
+    // 100+ and up for vector index.
+    /// Flat vector index.
+    VectorFlat = 100,
+
+    /// IVF_PQ vector index.
+    VectorIvfPQ = 101,
+}
 
 /// Present an index.
+#[async_trait]
 pub trait Index {
+    fn index_type() -> IndexType;
 
-    /// The 
-    fn columns() -> &[&str];
+    async fn build(&self) -> Result<()>;
 }

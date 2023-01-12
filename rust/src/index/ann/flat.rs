@@ -26,12 +26,14 @@ use arrow_array::{FixedSizeListArray, Float32Array, StructArray};
 use arrow_ord::sort::sort_to_indices;
 use arrow_schema::{DataType, Field as ArrowField, Schema as ArrowSchema};
 use arrow_select::{concat::concat_batches, take::take};
+use async_trait::async_trait;
 use futures::stream::StreamExt;
 
 use super::distance::euclidean_distance;
 use super::SearchParams;
 use crate::arrow::RecordBatchExt;
 use crate::dataset::Dataset;
+use crate::index::{Index, IndexType};
 use crate::Result;
 
 /// Flat Vector Index.
@@ -52,11 +54,6 @@ impl<'a> FlatIndex<'a> {
     /// Create the flat index.
     pub fn new(dataset: &'a Dataset, column: String) -> Self {
         Self { dataset, column }
-    }
-
-    /// Build the index
-    pub(crate) async fn build(&self) -> Result<()> {
-        Ok(())
     }
 
     /// Search the flat vector index.
@@ -123,5 +120,16 @@ impl<'a> FlatIndex<'a> {
         let struct_arr = StructArray::from(scores);
         let taken_scores = take(&struct_arr, &indices, None)?;
         Ok(as_struct_array(&taken_scores).into())
+    }
+}
+
+#[async_trait]
+impl<'a> Index for FlatIndex<'a> {
+    fn index_type() -> IndexType {
+        IndexType::VectorFlat
+    }
+
+    async fn build(&self) -> Result<()> {
+        Ok(())
     }
 }

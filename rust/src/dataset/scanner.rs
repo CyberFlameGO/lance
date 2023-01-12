@@ -17,14 +17,14 @@
 
 use std::sync::Arc;
 
-use arrow_array::{RecordBatch, UInt64Array};
-use arrow_schema::{DataType, Field as ArrowField, Schema as ArrowSchema, SchemaRef};
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema as ArrowSchema, SchemaRef};
 use futures::stream::Stream;
 use object_store::path::Path;
 use tokio::sync::mpsc::{self, Receiver};
 
 use super::Dataset;
-use crate::datatypes::{Field, Schema};
+use crate::datatypes::Schema;
 use crate::format::{Fragment, Manifest};
 use crate::io::{FileReader, ObjectStore};
 use crate::{Error, Result};
@@ -73,7 +73,6 @@ impl<'a> Scanner<'a> {
             with_row_id: false,
             prefetch_size: DEFAULT_PREFETCH_SIZE,
             fragments: dataset.fragments().to_vec(),
-            with_row_id: false,
         }
     }
 
@@ -148,15 +147,8 @@ impl ScannerStream {
         let (tx, rx) = mpsc::channel(prefetch_size);
 
         let schema = schema.clone();
-        let mut return_schema = schema.clone();
-        if with_row_id {
-            return_schema.fields.push(
-                Field::try_from(&ArrowField::new("_rowid", DataType::UInt64, false)).unwrap(),
-            );
-        }
         tokio::spawn(async move {
             for frag in &fragments {
-                let mut row_count = 0;
                 let data_file = &frag.files[0];
                 let path = data_dir.child(data_file.path.clone());
                 let reader = match FileReader::try_new_with_fragment(
@@ -185,25 +177,7 @@ impl ScannerStream {
                     }
                 };
                 for batch_id in 0..reader.num_batches() {
-                    let batch = reader.read_batch(batch_id as i32).await.map(|b| {
-                        if with_row_id {
-                            // Add the meta "_rowid" column
-                            let mut columns = b.columns().to_vec();
-                            columns.push(Arc::new(UInt64Array::from(
-                                (row_count..row_count + b.num_rows() as u64 + fragment_id << 32)
-                                    .collect::<Vec<u64>>(),
-                            )));
-                            row_count += b.num_rows() as u64;
-                            RecordBatch::try_new(
-                                Arc::new(ArrowSchema::try_from(&return_schema).unwrap()),
-                                columns.to_vec(),
-                            )
-                            .unwrap()
-                        } else {
-                            row_count += b.num_rows() as u64;
-                            b
-                        }
-                    });
+                    let batch = reader.read_batch(batch_id as i32).await;
                     tx.send(batch).await.unwrap();
                 }
             }
