@@ -19,16 +19,29 @@ pub fn generate_random_array(n: usize) -> Arc<Float32Array> {
 }
 
 fn bench_top_k(c: &mut Criterion) {
-    c.bench_function("Top10From1M", |b| {
+    c.bench_function("QuickSelect: top 10 from 1 million", |b| {
         let topk = 10;
         let card = 1000000;
         let mut arr: Vec<f32> = generate_random_array(card).values().to_vec();
         let mut indices: Vec<u64> = (0..card as u64).collect();
         b.iter(|| find_min_k(&mut arr, &mut indices, topk));
     });
-    c.bench_function("Top10From1MSort", |b| {
+    c.bench_function("Sort: top 10 from 1 million", |b| {
         let topk = 10;
         let card = 1000000;
+        let arr: ArrayRef = Arc::new(Float32Array::from(generate_random_array(card).values().to_vec()));
+        b.iter(|| sort_to_indices(&arr, None, Some(topk)));
+    });
+    c.bench_function("QuickSelect: top 100 from 100 million", |b| {
+        let topk = 100;
+        let card = 10000000;
+        let mut arr: Vec<f32> = generate_random_array(card).values().to_vec();
+        let mut indices: Vec<u64> = (0..card as u64).collect();
+        b.iter(|| find_min_k(&mut arr, &mut indices, topk));
+    });
+    c.bench_function("Sort: top 100 from 100 million", |b| {
+        let topk = 100;
+        let card = 10000000;
         let arr: ArrayRef = Arc::new(Float32Array::from(generate_random_array(card).values().to_vec()));
         b.iter(|| sort_to_indices(&arr, None, Some(topk)));
     });
