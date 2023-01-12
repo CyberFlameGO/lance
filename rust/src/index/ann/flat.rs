@@ -54,6 +54,11 @@ impl<'a> FlatIndex<'a> {
         Self { dataset, column }
     }
 
+    /// Build the index
+    pub(crate) async fn build(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// Search the flat vector index.
     ///
     /// Returns a [RecordBatch] with Schema of:

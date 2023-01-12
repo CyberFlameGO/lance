@@ -20,4 +20,9 @@
 
 pub mod ann;
 
-pub trait Index {}
+/// Present an index.
+pub trait Index {
+
+    /// The 
+    fn columns() -> &[&str];
+}
