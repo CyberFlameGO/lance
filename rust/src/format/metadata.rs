@@ -90,6 +90,18 @@ impl Metadata {
         self.batch_offsets.get(batch_id as usize).copied()
     }
 
+    pub(crate) fn index_to_batch(&self, index: u32) -> BatchOffsets {
+        let mut batch_id: i32 = 0;
+        let num_batches = self.num_batches() as i32;
+        while batch_id < num_batches && index >= self.batch_offsets[batch_id as usize + 1] as u32 {
+            batch_id += 1;
+        }
+        let batch_offset = self.batch_offsets[batch_id as usize];
+        // Adjust indices to be the in-batch offsets.
+        let offsets = vec![index - batch_offset as u32];
+        BatchOffsets { batch_id, offsets }
+    }
+
     /// Group row indices into each batch.
     ///
     /// The indices must be sorted.

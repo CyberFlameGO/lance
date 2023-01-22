@@ -137,6 +137,8 @@ impl<'a> Scanner<'a> {
             PREFECTH_SIZE,
             projection,
             with_row_id,
+            self.limit,
+            self.offset,
         )
     }
 }
@@ -156,6 +158,8 @@ impl ScannerStream {
         prefetch_size: usize,
         schema: &Schema,
         with_row_id: bool,
+        limit: Option<i64>,
+        offset: Option<i64>,
     ) -> Self {
         let exec_node = Box::new(Scan::new(
             object_store,
@@ -165,6 +169,8 @@ impl ScannerStream {
             manifest.clone(),
             prefetch_size,
             with_row_id,
+            limit,
+            offset,
         ));
 
         Self { exec_node }

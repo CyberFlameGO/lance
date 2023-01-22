@@ -6,6 +6,7 @@ mod metadata;
 mod page_table;
 pub use fragment::Fragment;
 pub use manifest::Manifest;
+pub(crate) use metadata::BatchOffsets;
 pub use metadata::Metadata;
 pub use page_table::{PageInfo, PageTable};
 

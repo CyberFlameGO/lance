@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::cmp::min;
+use std::ops::{Range, RangeFrom};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -48,13 +50,17 @@ impl Scan {
         manifest: Arc<Manifest>,
         prefetch_size: usize,
         with_row_id: bool,
+        limit: Option<i64>,
+        offset: Option<i64>,
     ) -> Self {
         let (tx, rx) = mpsc::channel(prefetch_size);
 
         let projection = projection.clone();
         let io_thread = tokio::spawn(async move {
+            let mut offset: u32 = offset.unwrap_or(0) as u32;
+            let mut nrows_togo: u32 = limit.map(|limit| limit as u32).unwrap_or(u32::MAX);
             for frag in fragments.as_ref() {
-                if tx.is_closed() {
+                if tx.is_closed() || nrows_togo <= 0 {
                     return;
                 }
                 let data_file = &frag.files[0];
@@ -83,16 +89,40 @@ impl Scan {
                         break;
                     }
                 };
-                for batch_id in 0..reader.num_batches() {
-                    let batch = reader.read_batch(batch_id as i32, ..).await;
+
+                let nrows_file = reader.len() as u32;
+                if offset > nrows_file {
+                    offset -= nrows_file;
+                    continue;
+                }
+                let start = reader.index_to_batch(offset);
+                let end = reader.index_to_batch(min(nrows_file - 1, nrows_togo));
+
+                for batch_id in start.batch_id..=end.batch_id {
+                    let batch_start = if batch_id == start.batch_id {
+                        start.offsets[0]
+                    } else {
+                        0
+                    };
+                    let batch = if batch_id == end.batch_id {
+                        let params: Range<usize> =
+                            batch_start as usize..(end.offsets[0] + 1) as usize;
+                        reader.read_batch(batch_id, params).await
+                    } else {
+                        let params: RangeFrom<usize> = batch_start as usize..;
+                        reader.read_batch(batch_id, params).await
+                    };
+                    if let Ok(b) = &batch {
+                        nrows_togo -= b.num_rows() as u32;
+                    }
                     if tx.is_closed() {
                         break;
                     }
                     if tx.send(batch).await.is_err() {
-                        // tx closed earlier.
                         break;
                     }
                 }
+                offset = 0;
             }
             drop(tx)
         });

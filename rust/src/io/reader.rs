@@ -39,6 +39,7 @@ use super::ReadBatchParams;
 use crate::arrow::*;
 use crate::encodings::{dictionary::DictionaryDecoder, AsyncIndex};
 use crate::error::{Error, Result};
+use crate::format::BatchOffsets;
 use crate::format::Manifest;
 use crate::format::{pb, Metadata, PageTable};
 use crate::io::object_reader::ObjectReader;
@@ -179,8 +180,14 @@ impl<'a> FileReader<'a> {
         self.projection.as_ref().unwrap()
     }
 
+    /// Number of batches in this file
     pub fn num_batches(&self) -> usize {
         self.metadata.num_batches()
+    }
+
+    /// Number of rows in this file across all batches
+    pub fn len(&self) -> usize {
+        self.metadata.len()
     }
 
     /// Read a batch of data from the file.
@@ -193,6 +200,11 @@ impl<'a> FileReader<'a> {
     ) -> Result<RecordBatch> {
         let schema = self.projection.as_ref().unwrap();
         read_batch(self, &params.into(), schema, batch_id, self.with_row_id).await
+    }
+
+    /// Convert file index to batch id and batch index
+    pub(crate) fn index_to_batch(&self, index: u32) -> BatchOffsets {
+        self.metadata.index_to_batch(index)
     }
 
     /// Take by records by indices within the file.
