@@ -23,12 +23,6 @@ import pandas as pd
 import pyarrow as pa
 
 
-def gen_vectors(num_vectors, num_dimensions) -> pa.Table:
-    mat = np.random.randn(num_vectors, num_dimensions)
-    assert mat.shape == (num_vectors, num_dimensions)
-    return vec_to_table(mat)
-
-
 def gen_index(ds, ivf, pq):
     ds.create_index(
         "vector",
@@ -106,27 +100,52 @@ class Timer:
         return runs.describe()
 
 
-def run_test(nvecs, ndims, ivf_range, pq_range, nprobe_range, refine_factor_range, nsamples=100):
-    print(f"Generating {nvecs} vectors of {ndims}d")
-    vectors = gen_vectors(nvecs, ndims)
-    uri = f"test_base_{nvecs}_by_{ndims}.lance"
-    print(f"Writing to {uri}")
-    shutil.rmtree(uri, ignore_errors=True)
-    lance.write_dataset(vectors, uri,
-                        max_rows_per_group=8192,
-                        max_rows_per_file=1024*1024*10)
+def gen_vectors(num_vectors, num_dimensions) -> pa.Table:
+    mat = np.random.randn(num_vectors, num_dimensions)
+    assert mat.shape == (num_vectors, num_dimensions)
+    return vec_to_table(mat)
+
+
+class DataGen:
+
+    def __init__(self, uri, nvecs, ndims):
+        self.uri = uri
+        self.nvecs = nvecs
+        self.ndims = ndims
+
+    @property
+    def dataset(self):
+        return lance.dataset(self.uri)
+
+    def copy(self, dest):
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(self.uri, dest)
+        return DataGen(dest, self.nvecs, self.ndims)
+
+    @classmethod
+    def generate(cls, nvecs, ndims):
+        print(f"Generating {nvecs} vectors of {ndims}d")
+        vectors = gen_vectors(nvecs, ndims)
+        uri = f"test_base_{nvecs}_by_{ndims}.lance"
+        print(f"Writing to {uri}")
+        shutil.rmtree(uri, ignore_errors=True)
+        lance.write_dataset(vectors, uri,
+                            max_rows_per_group=8192,
+                            max_rows_per_file=1024 * 1024 * 10)
+        return DataGen(uri, nvecs, ndims)
+
+
+def run_test(datagen, ivf_range, pq_range, nprobe_range, refine_factor_range, nsamples=100):
     suite = Suite(["create_index", "query"])
 
     for ivf in ivf_range:
         for pq in pq_range:
             print(f"Creating index for ivf{ivf}_pq{pq}")
-            dest = f"test_{nvecs}_by_{ndims}_ivf{ivf}_pq{pq}.lance"
-            shutil.rmtree(dest, ignore_errors=True)
-            shutil.copytree(uri, dest)
-            ds = lance.dataset(dest)
+            dest = f"test_{datagen.nvecs}_by_{datagen.ndims}_ivf{ivf}_pq{pq}.lance"
+            ds = datagen.copy(dest)
             bench = suite["create_index"]
-            config = {"num_vectors": nvecs,
-                      "num_dimensions": ndims,
+            config = {"num_vectors": datagen.nvecs,
+                      "num_dimensions": datagen.ndims,
                       "ivf": ivf,
                       "pq": pq}
             timer = bench.timer(config)
@@ -151,9 +170,21 @@ def run_test(nvecs, ndims, ivf_range, pq_range, nprobe_range, refine_factor_rang
                     }
                     for q in queries:
                         nearest["q"] = q
-                        timer.time(ds.to_table, nearest=nearest)
+                        actual = timer.time(ds.to_table, nearest=nearest)
+                        
 
     summary = suite.summary()
     for name, df in summary.items():
         df.to_csv(f"{name}.csv", index=False)
     return summary
+
+
+if __name__ == "__main__":
+    datagen = DataGen("sift1m_base.lance")
+    config = {
+        "ivf_range": [64, 256, 1024],
+        "pq_range": [8, 16, 32],
+        "nprobe_range": [1, 10, 50, 100],
+        "refine_factor_range": [None, 1, 5, 10]
+    }
+    run_test(datagen, **config)

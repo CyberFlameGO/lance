@@ -13,5 +13,5 @@ tar -xzf sift.tar.gz
 Convert SIFT dataset to `lance` format.
 
 ```
- ./datagen.py ./sift/sift_base.fvecs sift.lance
+ ./datagen.py ./sift/sift_base.fvecs sift1m.lance
 ```
